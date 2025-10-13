@@ -16,6 +16,8 @@ import { EmbeddingVisualization } from './components/EmbeddingVisualization';
 import { VectorStoreSelector } from './components/VectorStoreSelector';
 import { SearchInterface } from './components/SearchInterface';
 import { SearchResults } from './components/SearchResults';
+import { RAGQuery } from './components/RAGQuery';
+import { RAGCompare } from './components/RAGCompare';
 import { WorkflowStepper } from './components/WorkflowStepper';
 import { StatusCard } from './components/StatusCard';
 import { getDocuments, getDocument, deleteDocument, type StoreVectorsResponse, type SearchResponse } from './utils/api';
@@ -31,7 +33,7 @@ function App() {
   const [embeddingResult, setEmbeddingResult] = useState<EmbeddingResponse | null>(null);
   const [vectorStoreStatus, setVectorStoreStatus] = useState<Record<string, StoreVectorsResponse>>({});
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
-  const [activePhase, setActivePhase] = useState<number>(0); // 0: Upload, 1: Chunk, 2: Embed, 3: Store, 4: Search
+  const [activePhase, setActivePhase] = useState<number>(0); // 0: Upload, 1: Chunk, 2: Embed, 3: Store, 4: Search, 5: RAG Query
 
   // Load documents on mount
   useEffect(() => {
@@ -144,11 +146,12 @@ function App() {
     if (phase === 2) return selectedDocs.length > 0 && chunkResults.size > 0;
     if (phase === 3) return selectedDocs.length > 0 && chunkResults.size > 0 && !!embeddingResult;
     if (phase === 4) return selectedDocs.length > 0 && chunkResults.size > 0 && !!embeddingResult && Object.keys(vectorStoreStatus).length > 0;
+    if (phase === 5) return selectedDocs.length > 0 && chunkResults.size > 0 && !!embeddingResult && Object.keys(vectorStoreStatus).length > 0;
     return false;
   };
 
   const handleNextPhase = () => {
-    if (activePhase < 4 && canNavigateToPhase(activePhase + 1)) {
+    if (activePhase < 5 && canNavigateToPhase(activePhase + 1)) {
       setActivePhase(activePhase + 1);
     }
   };
@@ -171,7 +174,7 @@ function App() {
                 RAG Pipeline Tester
               </h1>
               <p className="text-sm text-gray-400">
-                Phase 4: Vector Storage & Search
+                Phase 6: LLM Integration & RAG Query
               </p>
             </div>
           </div>
@@ -359,6 +362,43 @@ function App() {
                   </div>
                 )}
 
+                {/* Phase 5: RAG Query */}
+                {activePhase === 5 && (
+                  <div className="space-y-6">
+                    <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                      <h2 className="text-xl font-semibold text-primary-400 mb-4">
+                        Step 6: RAG Query & Compare
+                      </h2>
+                      <p className="text-sm text-gray-400 mb-2">
+                        Ask questions and get AI-powered answers with retrieved context
+                      </p>
+                    </div>
+
+                    {/* Tabs for Query vs Compare */}
+                    <div className="bg-gray-800 rounded-lg border border-gray-700">
+                      <div className="flex border-b border-gray-700">
+                        <button
+                          onClick={() => setError(null)}
+                          className="flex-1 px-6 py-3 text-sm font-medium text-gray-300
+                                   border-b-2 border-primary-500 bg-gray-900/50"
+                        >
+                          Single Query
+                        </button>
+                        <button
+                          onClick={() => setError(null)}
+                          className="flex-1 px-6 py-3 text-sm font-medium text-gray-400
+                                   hover:text-gray-300 hover:bg-gray-900/30 transition-colors"
+                        >
+                          Compare Providers
+                        </button>
+                      </div>
+                    </div>
+
+                    <RAGQuery />
+                    {/* Uncomment to enable comparison: <RAGCompare /> */}
+                  </div>
+                )}
+
                 {/* Navigation Buttons */}
                 <div className="flex items-center justify-between pt-4">
                   <button
@@ -374,7 +414,7 @@ function App() {
 
                   <button
                     onClick={handleNextPhase}
-                    disabled={!canNavigateToPhase(activePhase + 1) || activePhase === 4}
+                    disabled={!canNavigateToPhase(activePhase + 1) || activePhase === 5}
                     className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700
                              disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed
                              text-white rounded-lg transition-colors"
@@ -392,10 +432,10 @@ function App() {
       {/* Footer */}
       <footer className="mt-12 border-t border-gray-800 px-6 py-4 text-center text-sm text-gray-500">
         <p>
-          RAG Pipeline Tester v4.0.0 | Phase 4: Vector Storage & Search
+          RAG Pipeline Tester v6.0.0 | Phase 6: LLM Integration
         </p>
         <p className="mt-1">
-          ChromaDB + FAISS | Semantic Search
+          OpenAI | Anthropic | Ollama | RAG Query & Compare
         </p>
       </footer>
     </div>

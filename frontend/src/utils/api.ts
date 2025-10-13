@@ -248,6 +248,105 @@ export const getCollectionStats = async (collectionName: string, backend: 'chrom
   return response.data.data!.stats;
 };
 
+// Phase 6: RAG Query endpoints
+
+export interface RAGQueryRequest {
+  question: string;
+  provider: string;
+  collection_name?: string;
+  backend?: 'chromadb' | 'faiss';
+  top_k?: number;
+  temperature?: number;
+  max_tokens?: number;
+  system_prompt?: string;
+}
+
+export interface RAGQueryResponse {
+  answer: string;
+  context: Array<{
+    text: string;
+    metadata: Record<string, any>;
+    score: number;
+  }>;
+  model: string;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  provider: string;
+  retrieval_backend: string;
+  num_chunks: number;
+}
+
+export interface RAGCompareRequest {
+  question: string;
+  collection_name?: string;
+  backend?: 'chromadb' | 'faiss';
+  providers?: string[];
+  top_k?: number;
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface RAGCompareResponse {
+  question: string;
+  context: Array<{
+    text: string;
+    metadata: Record<string, any>;
+    score: number;
+  }>;
+  providers: Record<string, {
+    answer?: string;
+    model?: string;
+    usage?: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
+    error?: string;
+  }>;
+}
+
+/**
+ * Get list of available LLM providers
+ */
+export const getAvailableProviders = async (): Promise<string[]> => {
+  const response = await api.get<APIResponse<{ providers: string[]; count: number }>>('/api/rag/providers');
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Failed to fetch providers');
+  }
+
+  return response.data.data!.providers;
+};
+
+/**
+ * Execute RAG query with a specific provider
+ */
+export const ragQuery = async (request: RAGQueryRequest): Promise<RAGQueryResponse> => {
+  const response = await api.post<APIResponse<RAGQueryResponse>>('/api/rag/query', request);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'RAG query failed');
+  }
+
+  return response.data.data!;
+};
+
+/**
+ * Compare RAG answers from multiple providers
+ */
+export const ragCompare = async (request: RAGCompareRequest): Promise<RAGCompareResponse> => {
+  const response = await api.post<APIResponse<RAGCompareResponse>>('/api/rag/compare', request);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'RAG comparison failed');
+  }
+
+  return response.data.data!;
+};
+
 // Error handler
 api.interceptors.response.use(
   (response) => response,
