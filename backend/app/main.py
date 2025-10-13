@@ -19,6 +19,7 @@ from app.storage import storage
 from app.chunker import chunker
 from app.embedder import embedder
 from app.vector_store import create_vector_store, VectorStore
+from app.extractor import extractor
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -44,10 +45,12 @@ UPLOAD_DIR = Path("../uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
-# Supported file types for Phase 1
+# Supported file types - Phase 5: Extended support
 SUPPORTED_TYPES = {
     ".txt": "text/plain",
     ".md": "text/markdown",
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
 # Initialize vector stores
@@ -116,10 +119,12 @@ async def root():
 async def health_check():
     """Detailed health check with storage stats"""
     stats = storage.get_stats()
+    extraction_capabilities = extractor.get_extraction_capabilities()
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "storage": stats
+        "storage": stats,
+        "extraction": extraction_capabilities
     }
 
 
@@ -127,7 +132,7 @@ async def health_check():
 async def upload_document(file: UploadFile = File(...)):
     """
     Upload a document and extract text
-    Phase 1: Supports .txt and .md files
+    Phase 5: Supports .txt, .md, .pdf, and .docx files using Docling
     """
     try:
         # Validate file
@@ -167,15 +172,25 @@ async def upload_document(file: UploadFile = File(...)):
             file_type=file_type
         )
 
-        # Extract text
+        # Extract text using the new extractor
         try:
-            text = extract_text_simple(str(file_path))
+            extraction_result = extractor.extract_text(
+                file_path=str(file_path),
+                file_type=file_type,
+                use_docling=True
+            )
+
+            text = extraction_result["text"]
             stats = calculate_stats(text)
 
-            # Update document with extracted text
+            # Update document with extracted text and metadata
             storage.update_document(doc_id, {
                 "text": text,
                 "status": "ready",
+                "extraction_method": extraction_result["method"],
+                "pages": extraction_result.get("pages", 1),
+                "has_tables": extraction_result.get("has_tables", False),
+                "has_images": extraction_result.get("has_images", False),
                 **stats
             })
 
@@ -183,12 +198,17 @@ async def upload_document(file: UploadFile = File(...)):
 
             return APIResponse(
                 success=True,
-                message="Document uploaded and processed successfully",
+                message=f"Document uploaded and processed successfully using {extraction_result['method']}",
                 data={
                     "document_id": doc_id,
                     "filename": file.filename,
                     "file_size": file_size,
+                    "file_type": file_type,
                     "status": "ready",
+                    "extraction_method": extraction_result["method"],
+                    "pages": extraction_result.get("pages", 1),
+                    "has_tables": extraction_result.get("has_tables", False),
+                    "has_images": extraction_result.get("has_images", False),
                     "stats": stats,
                     "text_preview": text[:500] if text else None  # First 500 chars
                 }

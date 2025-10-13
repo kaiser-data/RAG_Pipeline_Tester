@@ -9,12 +9,15 @@ python-dotenv==1.0.0
 nltk==3.8.1
 
 # Phase 3: Embeddings
-scikit-learn==1.3.2
+numpy>=2.0,<2.3  # Compatible with docling's opencv dependencies
+scikit-learn>=1.5.0  # Compatible with numpy 2.x
 sentence-transformers>=5.0.0  # Updated for huggingface_hub compatibility
-numpy==1.26.2
 
 # Phase 4: Vector Storage
 chromadb==0.5.23
 faiss-cpu==1.9.0
 
-# Future phases: PyPDF2, pdfplumber, python-docx
+# Phase 5: Enhanced Document Extraction
+docling==2.56.1  # IBM's advanced document understanding library (includes python-docx, pptx, Pillow)
+PyPDF2==3.0.1  # Fallback PDF parser
+pdfplumber==0.11.0  # Advanced PDF table extraction

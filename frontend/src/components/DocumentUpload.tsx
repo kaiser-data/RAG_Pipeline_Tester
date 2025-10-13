@@ -21,7 +21,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onUploadSuccess 
     if (!file) return;
 
     // Validate file type
-    const allowedTypes = ['.txt', '.md'];
+    const allowedTypes = ['.txt', '.md', '.pdf', '.docx'];
     const fileExt = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
 
     if (!allowedTypes.includes(fileExt)) {
@@ -67,7 +67,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onUploadSuccess 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".txt,.md"
+            accept=".txt,.md,.pdf,.docx"
             onChange={handleFileSelect}
             className="hidden"
             disabled={isUploading}
@@ -92,7 +92,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onUploadSuccess 
             </div>
 
             <p className="text-sm text-gray-400">
-              Supported formats: .txt, .md (Phase 1)
+              Supported formats: .txt, .md, .pdf, .docx (Phase 5 - Enhanced with Docling)
             </p>
             <p className="text-xs text-gray-500">
               Maximum file size: 10MB
