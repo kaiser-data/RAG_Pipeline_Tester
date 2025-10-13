@@ -11,14 +11,14 @@ interface DocumentListProps {
   documents: Document[];
   onDocumentSelect: (doc: Document) => void;
   onDocumentDelete: (docId: string) => void;
-  selectedDocId?: string;
+  selectedDocIds?: string[];
 }
 
 export const DocumentList: React.FC<DocumentListProps> = ({
   documents,
   onDocumentSelect,
   onDocumentDelete,
-  selectedDocId,
+  selectedDocIds = [],
 }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -88,7 +88,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             className={`
               bg-gray-900 rounded-lg p-4 border cursor-pointer transition-all
               ${
-                selectedDocId === doc.id
+                selectedDocIds.includes(doc.id)
                   ? 'border-primary-500 bg-primary-900/10'
                   : 'border-gray-700 hover:border-gray-600'
               }
@@ -140,7 +140,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                {selectedDocId === doc.id && (
+                {selectedDocIds.includes(doc.id) && (
                   <Eye className="w-4 h-4 text-primary-400" />
                 )}
 

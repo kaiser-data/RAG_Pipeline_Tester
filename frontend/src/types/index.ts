@@ -83,10 +83,63 @@ export interface ChunkResponse {
 }
 
 // Phase 3: Embedding types
-export interface EmbeddingConfig {
-  model_type: 'simulated' | 'tfidf' | 'sentence-transformer';
+export interface EmbeddingRequest {
+  document_id: string;
+  model_type: 'tfidf' | 'sentence_transformer';
   model_name?: string;
-  dimensions: number;
+  max_features?: number;  // For TF-IDF
+  batch_size?: number;    // For sentence transformers
+}
+
+export interface EmbeddingMetadata {
+  embedding_id: string;
+  chunk_id: string;
+  document_id: string;
+  model_type: string;
+  model_name: string;
+  dimension: number;
+  metadata: {
+    // TF-IDF specific
+    max_features?: number;
+    vocab_size?: number;
+    non_zero_features?: number;
+    sparsity?: number;
+    // Sentence transformer specific
+    l2_norm?: number;
+    mean?: number;
+    std?: number;
+    min?: number;
+    max?: number;
+  };
+}
+
+export interface EmbeddingStatistics {
+  total_embeddings: number;
+  model_type: string;
+  model_name: string;
+  dimension: number;
+  total_size_mb: number;
+  avg_size_kb: number;
+  // Model-specific stats
+  avg_non_zero_features?: number;
+  avg_sparsity?: number;
+  avg_l2_norm?: number;
+}
+
+export interface EmbeddingResponse {
+  document_id: string;
+  model_type: string;
+  model_name: string;
+  total_embeddings: number;
+  statistics: EmbeddingStatistics;
+  preview: EmbeddingMetadata[];
+}
+
+export interface EmbeddingsData {
+  model_type: string;
+  model_name: string;
+  total_embeddings: number;
+  embeddings_metadata: EmbeddingMetadata[];
 }
 
 // Phase 4: Query types

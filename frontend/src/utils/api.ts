@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { APIResponse, Document, UploadResponse, ChunkRequest, ChunkResponse, Chunk } from '../types';
+import type { APIResponse, Document, UploadResponse, ChunkRequest, ChunkResponse, Chunk, EmbeddingRequest, EmbeddingResponse, EmbeddingsData, EmbeddingStatistics } from '../types';
 
 // Create axios instance with base configuration
 const api = axios.create({
@@ -109,6 +109,143 @@ export const getDocumentChunks = async (docId: string): Promise<{ chunks: Chunk[
     chunks: response.data.data!.chunks,
     statistics: response.data.data!.statistics
   };
+};
+
+// Phase 3: Embedding endpoints
+
+/**
+ * Generate embeddings for a document's chunks
+ */
+export const generateEmbeddings = async (request: EmbeddingRequest): Promise<EmbeddingResponse> => {
+  const response = await api.post<APIResponse<EmbeddingResponse>>('/api/embed', request);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Embedding generation failed');
+  }
+
+  return response.data.data!;
+};
+
+/**
+ * Get embeddings for a document
+ */
+export const getDocumentEmbeddings = async (docId: string, includeVectors: boolean = false): Promise<{ embeddings: EmbeddingsData; statistics: EmbeddingStatistics }> => {
+  const response = await api.get<APIResponse<{ embeddings: EmbeddingsData; statistics: EmbeddingStatistics }>>(
+    `/api/documents/${docId}/embeddings?include_vectors=${includeVectors}`
+  );
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Failed to fetch embeddings');
+  }
+
+  return {
+    embeddings: response.data.data!.embeddings,
+    statistics: response.data.data!.statistics
+  };
+};
+
+// Phase 4: Vector Storage and Search endpoints
+
+export interface StoreVectorsRequest {
+  document_id: string;
+  backend: 'chromadb' | 'faiss';
+  collection_name?: string;
+}
+
+export interface StoreVectorsResponse {
+  document_id: string;
+  backend: string;
+  collection: string;
+  stored_count: number;
+  result: any;
+}
+
+export interface SearchRequest {
+  query_text: string;
+  backend: 'chromadb' | 'faiss';
+  collection_name?: string;
+  top_k?: number;
+  model_type?: string;
+  model_name?: string;
+}
+
+export interface SearchResult {
+  id: string;
+  text: string;
+  score: number;
+  metadata: Record<string, any>;
+}
+
+export interface SearchResponse {
+  query: string;
+  backend: string;
+  collection: string;
+  top_k: number;
+  results_count: number;
+  results: SearchResult[];
+}
+
+/**
+ * Store embeddings in vector database
+ */
+export const storeVectors = async (request: StoreVectorsRequest): Promise<StoreVectorsResponse> => {
+  const response = await api.post<APIResponse<StoreVectorsResponse>>('/api/store', request);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Failed to store vectors');
+  }
+
+  return response.data.data!;
+};
+
+/**
+ * Search for similar chunks using semantic search
+ */
+export const searchVectors = async (request: SearchRequest): Promise<SearchResponse> => {
+  const response = await api.post<APIResponse<SearchResponse>>('/api/search', request);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Search failed');
+  }
+
+  return response.data.data!;
+};
+
+/**
+ * List all collections in a vector database
+ */
+export const listCollections = async (backend: 'chromadb' | 'faiss' = 'chromadb'): Promise<string[]> => {
+  const response = await api.get<APIResponse<{ collections: string[] }>>(`/api/collections?backend=${backend}`);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Failed to list collections');
+  }
+
+  return response.data.data!.collections;
+};
+
+/**
+ * Delete a collection from vector database
+ */
+export const deleteCollection = async (collectionName: string, backend: 'chromadb' | 'faiss' = 'chromadb'): Promise<void> => {
+  const response = await api.delete<APIResponse>(`/api/collections/${collectionName}?backend=${backend}`);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Failed to delete collection');
+  }
+};
+
+/**
+ * Get statistics for a collection
+ */
+export const getCollectionStats = async (collectionName: string, backend: 'chromadb' | 'faiss' = 'chromadb'): Promise<any> => {
+  const response = await api.get<APIResponse<{ stats: any }>>(`/api/collections/${collectionName}/stats?backend=${backend}`);
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Failed to get collection stats');
+  }
+
+  return response.data.data!.stats;
 };
 
 // Error handler

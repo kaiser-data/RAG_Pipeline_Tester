@@ -7,7 +7,7 @@ Phase 2: Chunking strategies
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 import os
 import shutil
@@ -17,6 +17,8 @@ from datetime import datetime
 from app.models import APIResponse, DocumentMetadata, Document
 from app.storage import storage
 from app.chunker import chunker
+from app.embedder import embedder
+from app.vector_store import create_vector_store, VectorStore
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -46,6 +48,12 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 SUPPORTED_TYPES = {
     ".txt": "text/plain",
     ".md": "text/markdown",
+}
+
+# Initialize vector stores
+vector_stores: Dict[str, VectorStore] = {
+    "chromadb": create_vector_store("chromadb", persist_directory="./chroma_db"),
+    "faiss": create_vector_store("faiss", index_directory="./faiss_indexes")
 }
 
 
@@ -433,6 +441,440 @@ async def get_document_chunks(doc_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving chunks: {str(e)}")
+
+
+# Phase 3: Embedding endpoints
+
+class EmbeddingRequest(BaseModel):
+    """Request model for embedding generation"""
+    document_id: str
+    model_type: str = "tfidf"  # "tfidf" or "sentence_transformer"
+    model_name: Optional[str] = None  # For sentence transformers (e.g., "all-MiniLM-L6-v2")
+    max_features: int = 1000  # For TF-IDF
+    batch_size: int = 32  # For sentence transformers
+
+
+@app.post("/api/embed")
+async def generate_embeddings(request: EmbeddingRequest):
+    """
+    Generate embeddings for document chunks
+    Phase 3: Supports TF-IDF and Sentence Transformer embeddings
+    """
+    try:
+        # Get document
+        doc = storage.get_document(request.document_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Get chunks for document
+        chunks = storage.get_chunks(request.document_id)
+        if not chunks:
+            raise HTTPException(
+                status_code=400,
+                detail="No chunks found for this document. Chunk document first."
+            )
+
+        # Generate embeddings based on model type
+        if request.model_type == "tfidf":
+            embeddings = embedder.generate_tfidf_embeddings(
+                chunks=chunks,
+                max_features=request.max_features
+            )
+        elif request.model_type == "sentence_transformer":
+            model_name = request.model_name or "all-MiniLM-L6-v2"
+            try:
+                embeddings = embedder.generate_sentence_transformer_embeddings(
+                    chunks=chunks,
+                    model_name=model_name,
+                    batch_size=request.batch_size
+                )
+            except ImportError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Sentence transformers not installed. Install with: pip install sentence-transformers"
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model type: {request.model_type}. Supported: tfidf, sentence_transformer"
+            )
+
+        # Store embeddings
+        embeddings_data = {
+            "model_type": request.model_type,
+            "model_name": request.model_name or ("sklearn-tfidf" if request.model_type == "tfidf" else "all-MiniLM-L6-v2"),
+            "embeddings": embeddings
+        }
+        storage.store_embeddings(request.document_id, embeddings_data)
+
+        # Calculate statistics
+        stats = embedder.get_embedding_statistics(embeddings)
+
+        # Return preview (first 3 embeddings without full vectors to save bandwidth)
+        preview_embeddings = []
+        for emb in embeddings[:3]:
+            preview = {k: v for k, v in emb.items() if k != "embedding_vector"}
+            preview["vector_preview"] = emb["embedding_vector"][:10]  # First 10 dimensions
+            preview_embeddings.append(preview)
+
+        return APIResponse(
+            success=True,
+            message=f"Embeddings generated successfully using {request.model_type}",
+            data={
+                "document_id": request.document_id,
+                "model_type": request.model_type,
+                "model_name": embeddings_data["model_name"],
+                "total_embeddings": len(embeddings),
+                "statistics": stats,
+                "preview": preview_embeddings
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
+
+
+@app.get("/api/documents/{doc_id}/embeddings")
+async def get_document_embeddings(doc_id: str, include_vectors: bool = False):
+    """
+    Get embeddings for a document
+
+    Args:
+        doc_id: Document ID
+        include_vectors: If True, include full embedding vectors (can be large)
+    """
+    try:
+        doc = storage.get_document(doc_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        embeddings_data = storage.get_embeddings(doc_id)
+        if not embeddings_data:
+            return APIResponse(
+                success=True,
+                message="No embeddings found for this document",
+                data={"embeddings": None}
+            )
+
+        # If not including vectors, remove them to reduce response size
+        if not include_vectors:
+            embeddings_summary = {
+                "model_type": embeddings_data["model_type"],
+                "model_name": embeddings_data["model_name"],
+                "total_embeddings": len(embeddings_data["embeddings"]),
+                "embeddings_metadata": []
+            }
+
+            for emb in embeddings_data["embeddings"]:
+                metadata = {k: v for k, v in emb.items() if k != "embedding_vector"}
+                metadata["vector_shape"] = [emb["dimension"]]
+                embeddings_summary["embeddings_metadata"].append(metadata)
+
+            stats = embedder.get_embedding_statistics(embeddings_data["embeddings"])
+
+            return APIResponse(
+                success=True,
+                message="Embeddings retrieved successfully (metadata only)",
+                data={
+                    "document_id": doc_id,
+                    "embeddings": embeddings_summary,
+                    "statistics": stats
+                }
+            )
+        else:
+            # Include full vectors
+            stats = embedder.get_embedding_statistics(embeddings_data["embeddings"])
+
+            return APIResponse(
+                success=True,
+                message="Embeddings retrieved successfully (with vectors)",
+                data={
+                    "document_id": doc_id,
+                    "embeddings": embeddings_data,
+                    "statistics": stats
+                }
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving embeddings: {str(e)}")
+
+
+# Phase 4: Vector Storage and Search endpoints
+
+class StoreRequest(BaseModel):
+    """Request model for storing embeddings in vector database"""
+    document_id: str
+    backend: str = "chromadb"  # "chromadb" or "faiss"
+    collection_name: str = "default"
+
+
+class SearchRequest(BaseModel):
+    """Request model for similarity search"""
+    query_text: str
+    backend: str = "chromadb"  # "chromadb" or "faiss"
+    collection_name: str = "default"
+    top_k: int = 5
+    model_type: str = "tfidf"  # Same model used for embeddings
+    model_name: Optional[str] = None
+
+
+@app.post("/api/store")
+async def store_vectors(request: StoreRequest):
+    """
+    Store document embeddings in vector database
+    Phase 4: Store vectors in ChromaDB or FAISS
+    """
+    try:
+        # Validate backend
+        if request.backend not in vector_stores:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported backend: {request.backend}. Choose 'chromadb' or 'faiss'"
+            )
+
+        # Get document
+        doc = storage.get_document(request.document_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Get embeddings
+        embeddings_data = storage.get_embeddings(request.document_id)
+        if not embeddings_data:
+            raise HTTPException(
+                status_code=400,
+                detail="No embeddings found for this document. Generate embeddings first."
+            )
+
+        # Get chunks for metadata
+        chunks = storage.get_chunks(request.document_id)
+        if not chunks:
+            raise HTTPException(
+                status_code=400,
+                detail="No chunks found for this document."
+            )
+
+        # Prepare vectors and metadata
+        vectors = []
+        metadata = []
+
+        for emb in embeddings_data["embeddings"]:
+            vectors.append(emb["embedding_vector"])
+
+            # Find corresponding chunk
+            chunk_id = emb["chunk_id"]
+            chunk = next((c for c in chunks if c["chunk_id"] == chunk_id), None)
+
+            meta = {
+                "id": chunk_id,
+                "text": chunk["text"] if chunk else "",
+                "document_id": request.document_id,
+                "chunk_index": chunk["chunk_index"] if chunk else 0,
+                "model_type": embeddings_data["model_type"],
+                "model_name": embeddings_data["model_name"]
+            }
+            metadata.append(meta)
+
+        # Store in vector database
+        vector_store = vector_stores[request.backend]
+        result = vector_store.add_vectors(
+            vectors=vectors,
+            metadata=metadata,
+            collection_name=request.collection_name
+        )
+
+        return APIResponse(
+            success=True,
+            message=f"Vectors stored successfully in {request.backend}",
+            data={
+                "document_id": request.document_id,
+                "backend": request.backend,
+                "collection": request.collection_name,
+                "stored_count": result["added_count"],
+                "result": result
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Storage failed: {str(e)}")
+
+
+@app.post("/api/search")
+async def search_vectors(request: SearchRequest):
+    """
+    Perform similarity search in vector database
+    Phase 4: Search using ChromaDB or FAISS
+    """
+    try:
+        # Validate backend
+        if request.backend not in vector_stores:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported backend: {request.backend}. Choose 'chromadb' or 'faiss'"
+            )
+
+        # Generate query embedding
+        if request.model_type == "tfidf":
+            # For TF-IDF, we need to use the same vectorizer
+            # This is a limitation - in production, you'd store the vectorizer
+            raise HTTPException(
+                status_code=400,
+                detail="TF-IDF search requires pre-fitted vectorizer. Use sentence_transformer for now."
+            )
+        elif request.model_type == "sentence_transformer":
+            model_name = request.model_name or "all-MiniLM-L6-v2"
+            try:
+                # Generate embedding for query
+                query_chunk = {
+                    "chunk_id": "query",
+                    "document_id": "query",
+                    "text": request.query_text,
+                    "chunk_index": 0
+                }
+                query_embeddings = embedder.generate_sentence_transformer_embeddings(
+                    chunks=[query_chunk],
+                    model_name=model_name,
+                    batch_size=1
+                )
+                query_vector = query_embeddings[0]["embedding_vector"]
+            except ImportError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Sentence transformers not installed."
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model type: {request.model_type}"
+            )
+
+        # Perform search
+        vector_store = vector_stores[request.backend]
+        results = vector_store.search(
+            query_vector=query_vector,
+            top_k=request.top_k,
+            collection_name=request.collection_name
+        )
+
+        return APIResponse(
+            success=True,
+            message=f"Search completed using {request.backend}",
+            data={
+                "query": request.query_text,
+                "backend": request.backend,
+                "collection": request.collection_name,
+                "top_k": request.top_k,
+                "results_count": len(results),
+                "results": results
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@app.get("/api/collections")
+async def list_collections(backend: str = "chromadb"):
+    """
+    List all collections in vector database
+    """
+    try:
+        if backend not in vector_stores:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported backend: {backend}"
+            )
+
+        vector_store = vector_stores[backend]
+        collections = vector_store.list_collections()
+
+        return APIResponse(
+            success=True,
+            message=f"Retrieved collections from {backend}",
+            data={
+                "backend": backend,
+                "collections": collections,
+                "count": len(collections)
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list collections: {str(e)}")
+
+
+@app.delete("/api/collections/{collection_name}")
+async def delete_collection(collection_name: str, backend: str = "chromadb"):
+    """
+    Delete a collection from vector database
+    """
+    try:
+        if backend not in vector_stores:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported backend: {backend}"
+            )
+
+        vector_store = vector_stores[backend]
+        success = vector_store.delete_collection(collection_name)
+
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Collection '{collection_name}' not found"
+            )
+
+        return APIResponse(
+            success=True,
+            message=f"Collection '{collection_name}' deleted from {backend}",
+            data={
+                "backend": backend,
+                "collection": collection_name
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete collection: {str(e)}")
+
+
+@app.get("/api/collections/{collection_name}/stats")
+async def get_collection_stats(collection_name: str, backend: str = "chromadb"):
+    """
+    Get statistics for a collection
+    """
+    try:
+        if backend not in vector_stores:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported backend: {backend}"
+            )
+
+        vector_store = vector_stores[backend]
+        stats = vector_store.get_stats(collection_name)
+
+        return APIResponse(
+            success=True,
+            message=f"Retrieved stats for collection '{collection_name}'",
+            data={
+                "backend": backend,
+                "stats": stats
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
 
 
 if __name__ == "__main__":
