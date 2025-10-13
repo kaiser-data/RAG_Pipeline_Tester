@@ -5,7 +5,10 @@ python-multipart==0.0.6
 pydantic==2.5.0
 python-dotenv==1.0.0
 
+# Phase 2: Advanced chunking strategies
+nltk==3.8.1
+
 # Phase 3: Will add scikit-learn for TF-IDF
 # Phase 4: Will add faiss-cpu, numpy
-# Phase 5: Will add PyPDF2, pdfplumber, python-docx, nltk
+# Phase 5: Will add PyPDF2, pdfplumber, python-docx
 # Phase 6: Will add sentence-transformers, torch

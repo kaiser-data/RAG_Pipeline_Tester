@@ -1,18 +1,29 @@
 """
 Chunking service for splitting documents into smaller pieces
-Phase 2: Fixed-size and Recursive chunking strategies
+Phase 2: Multiple chunking strategies
+- Fixed-size: Regular intervals with overlap
+- Recursive: Respects document structure
+- Sentence: Respects sentence boundaries
+- Semantic: Groups semantically similar content
+- Sliding window: Fixed window with configurable stride
 """
 
 from typing import List, Dict, Any
 import re
 import uuid
+import nltk
+from collections import defaultdict
 
 
 class Chunker:
     """Document chunking with multiple strategies"""
 
     def __init__(self):
-        pass
+        # Download NLTK data for sentence tokenization (if not already downloaded)
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download('punkt', quiet=True)
 
     def chunk_fixed_size(
         self,
@@ -230,6 +241,228 @@ class Chunker:
             overlapped_chunks.append(chunk_copy)
 
         return overlapped_chunks
+
+    def chunk_sentence(
+        self,
+        text: str,
+        chunk_size: int = 500,
+        overlap: int = 50,
+        doc_id: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Sentence-based chunking: Groups sentences to create chunks near target size
+        Ensures chunks don't break in the middle of sentences
+
+        Args:
+            text: Text to chunk
+            chunk_size: Target chunk size in characters
+            overlap: Number of sentences to overlap between chunks
+            doc_id: Document ID for tracking
+
+        Returns:
+            List of chunk dictionaries with metadata
+        """
+        if not text:
+            return []
+
+        # Tokenize into sentences
+        sentences = nltk.sent_tokenize(text)
+
+        chunks = []
+        chunk_index = 0
+        current_pos = 0
+        i = 0
+
+        while i < len(sentences):
+            current_chunk = ""
+            start_pos = current_pos
+            sentences_in_chunk = []
+
+            # Add sentences until we reach chunk size
+            while i < len(sentences) and len(current_chunk) + len(sentences[i]) <= chunk_size:
+                current_chunk += sentences[i] + " "
+                sentences_in_chunk.append(sentences[i])
+                i += 1
+
+            # If we haven't added any sentence and still have sentences left,
+            # add at least one sentence even if it exceeds chunk_size
+            if not sentences_in_chunk and i < len(sentences):
+                current_chunk = sentences[i] + " "
+                sentences_in_chunk.append(sentences[i])
+                i += 1
+
+            # Create chunk
+            if current_chunk.strip():
+                chunk_text = current_chunk.strip()
+                chunk_id = str(uuid.uuid4())
+                estimated_tokens = len(chunk_text) // 4
+
+                chunks.append({
+                    "chunk_id": chunk_id,
+                    "document_id": doc_id or "unknown",
+                    "chunk_index": chunk_index,
+                    "text": chunk_text,
+                    "char_count": len(chunk_text),
+                    "estimated_tokens": estimated_tokens,
+                    "start_char": start_pos,
+                    "end_char": start_pos + len(chunk_text),
+                    "sentence_count": len(sentences_in_chunk)
+                })
+                chunk_index += 1
+                current_pos = start_pos + len(chunk_text)
+
+            # Overlap: go back by overlap sentences
+            if overlap > 0 and i < len(sentences):
+                i = max(i - overlap, i - len(sentences_in_chunk) + 1)
+
+        return chunks
+
+    def chunk_sliding_window(
+        self,
+        text: str,
+        window_size: int = 500,
+        stride: int = 250,
+        doc_id: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Sliding window chunking: Fixed window that slides across text with configurable stride
+
+        Args:
+            text: Text to chunk
+            window_size: Size of the sliding window in characters
+            stride: How many characters to move the window (smaller = more overlap)
+            doc_id: Document ID for tracking
+
+        Returns:
+            List of chunk dictionaries with metadata
+        """
+        if not text:
+            return []
+
+        chunks = []
+        chunk_index = 0
+        start = 0
+
+        while start < len(text):
+            end = min(start + window_size, len(text))
+            chunk_text = text[start:end]
+
+            if chunk_text.strip():
+                chunk_id = str(uuid.uuid4())
+                estimated_tokens = len(chunk_text) // 4
+
+                chunks.append({
+                    "chunk_id": chunk_id,
+                    "document_id": doc_id or "unknown",
+                    "chunk_index": chunk_index,
+                    "text": chunk_text,
+                    "char_count": len(chunk_text),
+                    "estimated_tokens": estimated_tokens,
+                    "start_char": start,
+                    "end_char": end,
+                    "overlap_chars": window_size - stride if chunk_index > 0 else 0
+                })
+                chunk_index += 1
+
+            start += stride
+
+            # Break if we've reached the end
+            if end >= len(text):
+                break
+
+        return chunks
+
+    def chunk_semantic(
+        self,
+        text: str,
+        chunk_size: int = 500,
+        overlap: int = 50,
+        doc_id: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Semantic chunking: Groups sentences based on topic similarity
+        Uses simple keyword-based similarity for grouping related content
+
+        Args:
+            text: Text to chunk
+            chunk_size: Target chunk size in characters
+            overlap: Number of characters to overlap
+            doc_id: Document ID for tracking
+
+        Returns:
+            List of chunk dictionaries with metadata
+        """
+        if not text:
+            return []
+
+        # Tokenize into sentences
+        sentences = nltk.sent_tokenize(text)
+
+        if not sentences:
+            return []
+
+        # Simple semantic grouping based on shared keywords
+        chunks = []
+        chunk_index = 0
+        current_pos = 0
+        i = 0
+
+        while i < len(sentences):
+            current_chunk = ""
+            start_pos = current_pos
+            chunk_sentences = []
+
+            # Get keywords from first sentence
+            first_sentence_words = set(re.findall(r'\b\w{4,}\b', sentences[i].lower()))
+
+            # Add sentences with similar keywords
+            while i < len(sentences):
+                sentence = sentences[i]
+                sentence_words = set(re.findall(r'\b\w{4,}\b', sentence.lower()))
+
+                # Calculate keyword overlap
+                if chunk_sentences:
+                    overlap_score = len(first_sentence_words & sentence_words) / max(len(first_sentence_words), 1)
+                else:
+                    overlap_score = 1.0  # First sentence always included
+
+                # Add if similar or chunk is still small
+                if (overlap_score > 0.2 or len(current_chunk) < chunk_size // 2) and \
+                   len(current_chunk) + len(sentence) <= chunk_size:
+                    current_chunk += sentence + " "
+                    chunk_sentences.append(sentence)
+                    i += 1
+                else:
+                    break
+
+            # If no sentences added, force add at least one
+            if not chunk_sentences and i < len(sentences):
+                current_chunk = sentences[i] + " "
+                chunk_sentences.append(sentences[i])
+                i += 1
+
+            # Create chunk
+            if current_chunk.strip():
+                chunk_text = current_chunk.strip()
+                chunk_id = str(uuid.uuid4())
+                estimated_tokens = len(chunk_text) // 4
+
+                chunks.append({
+                    "chunk_id": chunk_id,
+                    "document_id": doc_id or "unknown",
+                    "chunk_index": chunk_index,
+                    "text": chunk_text,
+                    "char_count": len(chunk_text),
+                    "estimated_tokens": estimated_tokens,
+                    "start_char": start_pos,
+                    "end_char": start_pos + len(chunk_text),
+                    "sentence_count": len(chunk_sentences),
+                    "semantic_group": True
+                })
+                chunk_index += 1
+                current_pos = start_pos + len(chunk_text) + 1
+
+        return chunks
 
     def get_chunk_statistics(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

@@ -301,9 +301,10 @@ async def delete_document(doc_id: str):
 class ChunkRequest(BaseModel):
     """Request model for chunking"""
     document_id: str
-    strategy: str = "fixed"  # "fixed" or "recursive"
+    strategy: str = "fixed"  # "fixed", "recursive", "sentence", "semantic", "sliding_window"
     chunk_size: int = 500
     overlap: int = 50
+    stride: Optional[int] = 250  # For sliding window
     separators: Optional[List[str]] = None
 
 
@@ -343,10 +344,31 @@ async def chunk_document(request: ChunkRequest):
                 doc_id=request.document_id,
                 separators=request.separators
             )
+        elif request.strategy == "sentence":
+            chunks = chunker.chunk_sentence(
+                text=text,
+                chunk_size=request.chunk_size,
+                overlap=request.overlap,
+                doc_id=request.document_id
+            )
+        elif request.strategy == "semantic":
+            chunks = chunker.chunk_semantic(
+                text=text,
+                chunk_size=request.chunk_size,
+                overlap=request.overlap,
+                doc_id=request.document_id
+            )
+        elif request.strategy == "sliding_window":
+            chunks = chunker.chunk_sliding_window(
+                text=text,
+                window_size=request.chunk_size,
+                stride=request.stride or request.chunk_size - request.overlap,
+                doc_id=request.document_id
+            )
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported chunking strategy: {request.strategy}"
+                detail=f"Unsupported chunking strategy: {request.strategy}. Supported: fixed, recursive, sentence, semantic, sliding_window"
             )
 
         # Store chunks
