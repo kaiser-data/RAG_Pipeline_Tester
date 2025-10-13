@@ -18,8 +18,9 @@ from app.models import APIResponse, DocumentMetadata, Document
 from app.storage import storage
 from app.chunker import chunker
 from app.embedder import embedder
-from app.vector_store import create_vector_store, VectorStore
+from app.vector_store import create_vector_store, VectorStore, VectorStoreManager
 from app.extractor import extractor
+from app.rag_engine import initialize_rag_engine, get_rag_engine
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -58,6 +59,18 @@ vector_stores: Dict[str, VectorStore] = {
     "chromadb": create_vector_store("chromadb", persist_directory="./chroma_db"),
     "faiss": create_vector_store("faiss", index_directory="./faiss_indexes")
 }
+
+# Initialize vector store manager for RAG engine
+vector_store_manager = VectorStoreManager(vector_stores)
+
+# Initialize RAG engine (Phase 6)
+# API keys can be set via environment variables: OPENAI_API_KEY, ANTHROPIC_API_KEY
+rag_engine = initialize_rag_engine(
+    vector_store_manager=vector_store_manager,
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
+    anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+    ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+)
 
 
 # Utility functions
@@ -895,6 +908,110 @@ async def get_collection_stats(collection_name: str, backend: str = "chromadb"):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+
+# Phase 6: RAG Query endpoints
+
+class RAGQueryRequest(BaseModel):
+    """Request model for RAG query"""
+    question: str
+    provider: str  # "openai", "anthropic", "ollama"
+    collection_name: str = "default"
+    backend: str = "chromadb"
+    top_k: int = 3
+    temperature: float = 0.7
+    max_tokens: int = 1000
+
+
+class RAGCompareRequest(BaseModel):
+    """Request model for comparing RAG providers"""
+    question: str
+    collection_name: str = "default"
+    backend: str = "chromadb"
+    providers: Optional[List[str]] = None  # None = all available
+    top_k: int = 3
+    temperature: float = 0.7
+    max_tokens: int = 1000
+
+
+@app.get("/api/rag/providers")
+async def get_available_providers():
+    """
+    Get list of available LLM providers
+    Phase 6: Check which providers are configured and available
+    """
+    try:
+        providers = rag_engine.get_available_providers()
+
+        return APIResponse(
+            success=True,
+            message=f"Found {len(providers)} available providers",
+            data={
+                "providers": providers,
+                "count": len(providers)
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get providers: {str(e)}")
+
+
+@app.post("/api/rag/query")
+async def rag_query(request: RAGQueryRequest):
+    """
+    Execute RAG query with specified provider
+    Phase 6: Retrieve context and generate answer
+    """
+    try:
+        result = rag_engine.query(
+            question=request.question,
+            provider_name=request.provider,
+            collection_name=request.collection_name,
+            backend=request.backend,
+            top_k=request.top_k,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens
+        )
+
+        return APIResponse(
+            success=True,
+            message="RAG query completed successfully",
+            data=result
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RAG query failed: {str(e)}")
+
+
+@app.post("/api/rag/compare")
+async def rag_compare(request: RAGCompareRequest):
+    """
+    Compare RAG answers from multiple providers
+    Phase 6: Same context, different providers
+    """
+    try:
+        result = rag_engine.compare_providers(
+            question=request.question,
+            collection_name=request.collection_name,
+            backend=request.backend,
+            providers=request.providers,
+            top_k=request.top_k,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens
+        )
+
+        return APIResponse(
+            success=True,
+            message="Provider comparison completed successfully",
+            data=result
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Provider comparison failed: {str(e)}")
 
 
 if __name__ == "__main__":

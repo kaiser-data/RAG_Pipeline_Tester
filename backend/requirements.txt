@@ -21,3 +21,9 @@ faiss-cpu==1.9.0
 docling==2.56.1  # IBM's advanced document understanding library (includes python-docx, pptx, Pillow)
 PyPDF2==3.0.1  # Fallback PDF parser
 pdfplumber==0.11.0  # Advanced PDF table extraction
+
+# Phase 6: LLM Integration (Universal Provider Support)
+openai==2.3.0  # OpenAI API (GPT-4, GPT-3.5) - Latest as of Oct 2025
+anthropic==0.69.0  # Anthropic API (Claude 3.5) - Latest as of Sep 2025
+ollama==0.6.0  # Ollama local LLM support - Latest as of Sep 2025
+httpx==0.28.1  # Async HTTP client for API calls - Latest stable

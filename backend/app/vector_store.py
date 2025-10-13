@@ -361,6 +361,98 @@ class FAISSStore(VectorStore):
         }
 
 
+class VectorStoreManager:
+    """
+    Manager class for vector stores with embedding generation
+    Provides unified interface for RAG engine
+    """
+
+    def __init__(self, vector_stores: Dict[str, VectorStore]):
+        """
+        Initialize manager with vector store backends
+
+        Args:
+            vector_stores: Dictionary mapping backend names to VectorStore instances
+                          e.g., {"chromadb": ChromaDBStore(), "faiss": FAISSStore()}
+        """
+        self.vector_stores = vector_stores
+        self.embedder = None
+
+    def _get_embedder(self):
+        """Lazy load embedder for query embedding generation"""
+        if self.embedder is None:
+            from app.embedder import embedder
+            self.embedder = embedder
+        return self.embedder
+
+    def search(
+        self,
+        query_text: str,
+        collection_name: str,
+        backend: str = "chromadb",
+        top_k: int = 5,
+        model_name: str = "all-MiniLM-L6-v2"
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for similar documents using text query
+
+        Args:
+            query_text: Text query to search for
+            collection_name: Name of the collection to search
+            backend: Backend to use ("chromadb" or "faiss")
+            top_k: Number of results to return
+            model_name: Sentence transformer model for embedding
+
+        Returns:
+            List of search results with text, metadata, and scores
+        """
+        # Validate backend
+        if backend not in self.vector_stores:
+            raise ValueError(
+                f"Unknown backend: {backend}. "
+                f"Available: {list(self.vector_stores.keys())}"
+            )
+
+        # Generate query embedding
+        embedder = self._get_embedder()
+        embedder._load_sentence_transformer(model_name)
+
+        # Create dummy chunk for embedding generation
+        query_chunk = [{"text": query_text, "chunk_id": "query", "document_id": "query"}]
+        query_embeddings = embedder.generate_sentence_transformer_embeddings(
+            query_chunk,
+            model_name=model_name,
+            batch_size=1
+        )
+
+        if not query_embeddings:
+            return []
+
+        query_vector = query_embeddings[0]["embedding_vector"]
+
+        # Search vector store
+        vector_store = self.vector_stores[backend]
+        results = vector_store.search(
+            query_vector=query_vector,
+            top_k=top_k,
+            collection_name=collection_name
+        )
+
+        return results
+
+    def list_collections(self, backend: str = "chromadb") -> List[str]:
+        """List all collections in specified backend"""
+        if backend not in self.vector_stores:
+            raise ValueError(f"Unknown backend: {backend}")
+        return self.vector_stores[backend].list_collections()
+
+    def get_stats(self, collection_name: str, backend: str = "chromadb") -> Dict[str, Any]:
+        """Get collection statistics from specified backend"""
+        if backend not in self.vector_stores:
+            raise ValueError(f"Unknown backend: {backend}")
+        return self.vector_stores[backend].get_stats(collection_name)
+
+
 # Factory function for easy initialization
 def create_vector_store(backend: str = "chromadb", **kwargs) -> VectorStore:
     """
