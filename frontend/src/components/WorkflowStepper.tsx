@@ -3,7 +3,7 @@
  * Vertical sidebar progress indicator for the RAG pipeline workflow
  */
 
-import { Check, Upload, Scissors, Sparkles, Database, Search } from 'lucide-react';
+import { Check, Upload, Scissors, Sparkles, Database, Search, MessageSquare } from 'lucide-react';
 
 interface WorkflowStep {
   id: string;
@@ -23,6 +23,7 @@ const steps: WorkflowStep[] = [
   { id: 'embed', label: 'Embed', icon: Sparkles },
   { id: 'store', label: 'Store', icon: Database },
   { id: 'search', label: 'Search', icon: Search },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
 ];
 
 export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({

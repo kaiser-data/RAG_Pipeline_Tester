@@ -13,6 +13,10 @@ import os
 import shutil
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from app.models import APIResponse, DocumentMetadata, Document
 from app.storage import storage
@@ -186,11 +190,12 @@ async def upload_document(file: UploadFile = File(...)):
         )
 
         # Extract text using the new extractor
+        # use_docling=False for faster extraction (PyPDF2/pdfplumber instead of Docling)
         try:
             extraction_result = extractor.extract_text(
                 file_path=str(file_path),
                 file_type=file_type,
-                use_docling=True
+                use_docling=False  # Changed to False for faster processing
             )
 
             text = extraction_result["text"]

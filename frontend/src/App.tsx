@@ -20,6 +20,7 @@ import { RAGQuery } from './components/RAGQuery';
 import { RAGCompare } from './components/RAGCompare';
 import { WorkflowStepper } from './components/WorkflowStepper';
 import { StatusCard } from './components/StatusCard';
+import { DatabaseManager } from './components/DatabaseManager';
 import { getDocuments, getDocument, deleteDocument, type StoreVectorsResponse, type SearchResponse } from './utils/api';
 import type { Document, ChunkResponse, EmbeddingResponse } from './types';
 import { Loader2, Activity, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -341,6 +342,8 @@ function App() {
                         </div>
                       </div>
                     )}
+
+                    <DatabaseManager />
                   </div>
                 )}
 
@@ -349,10 +352,10 @@ function App() {
                   <div className="space-y-6">
                     <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
                       <h2 className="text-xl font-semibold text-primary-400 mb-4">
-                        Step 5: Search
+                        Step 5: Semantic Search
                       </h2>
                       <p className="text-sm text-gray-400 mb-2">
-                        Perform semantic search using natural language queries
+                        Test document retrieval with natural language queries
                       </p>
                     </div>
 
@@ -362,15 +365,15 @@ function App() {
                   </div>
                 )}
 
-                {/* Phase 5: RAG Query */}
+                {/* Phase 5: Chat with Documents (LLM) */}
                 {activePhase === 5 && (
                   <div className="space-y-6">
                     <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
                       <h2 className="text-xl font-semibold text-primary-400 mb-4">
-                        Step 6: RAG Query & Compare
+                        Step 6: Chat with Documents
                       </h2>
                       <p className="text-sm text-gray-400 mb-2">
-                        Ask questions and get AI-powered answers with retrieved context
+                        Ask questions and get AI-powered answers using LLM with your documents
                       </p>
                     </div>
 
