@@ -129,7 +129,9 @@ function App() {
     if (selectedDocs.length === 0) return 0;
     if (chunkResults.size === 0) return 1;
     if (!embeddingResult) return 2;
-    return 3;
+    if (Object.keys(vectorStoreStatus).length === 0) return 3;
+    if (!searchResults) return 4;
+    return 5;
   };
 
   const getCompletedSteps = () => {
@@ -137,6 +139,8 @@ function App() {
     if (selectedDocs.length > 0) completed.add(0);
     if (chunkResults.size > 0) completed.add(1);
     if (embeddingResult) completed.add(2);
+    if (Object.keys(vectorStoreStatus).length > 0) completed.add(3);
+    if (searchResults) completed.add(4);
     return completed;
   };
 
@@ -397,7 +401,10 @@ function App() {
                       </div>
                     </div>
 
-                    <RAGQuery />
+                    <RAGQuery
+                      defaultCollection={Object.keys(vectorStoreStatus)[0] ? 'default' : undefined}
+                      defaultBackend={Object.keys(vectorStoreStatus)[0] as 'chromadb' | 'faiss' | undefined}
+                    />
                     {/* Uncomment to enable comparison: <RAGCompare /> */}
                   </div>
                 )}

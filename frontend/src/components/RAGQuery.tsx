@@ -9,9 +9,15 @@ import { getAvailableProviders, ragQuery, type RAGQueryRequest, type RAGQueryRes
 
 interface RAGQueryProps {
   onQueryComplete?: (response: RAGQueryResponse) => void;
+  defaultCollection?: string;
+  defaultBackend?: 'chromadb' | 'faiss';
 }
 
-export const RAGQuery: React.FC<RAGQueryProps> = ({ onQueryComplete }) => {
+export const RAGQuery: React.FC<RAGQueryProps> = ({
+  onQueryComplete,
+  defaultCollection = 'default',
+  defaultBackend = 'chromadb'
+}) => {
   const [providers, setProviders] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingProviders, setLoadingProviders] = useState(true);
@@ -21,8 +27,8 @@ export const RAGQuery: React.FC<RAGQueryProps> = ({ onQueryComplete }) => {
   // Form state
   const [question, setQuestion] = useState('');
   const [provider, setProvider] = useState('');
-  const [backend, setBackend] = useState<'chromadb' | 'faiss'>('chromadb');
-  const [collectionName, setCollectionName] = useState('default');
+  const [backend, setBackend] = useState<'chromadb' | 'faiss'>(defaultBackend);
+  const [collectionName, setCollectionName] = useState(defaultCollection);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Advanced parameters
@@ -136,7 +142,7 @@ export const RAGQuery: React.FC<RAGQueryProps> = ({ onQueryComplete }) => {
             </div>
 
             {/* Provider Selection */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   LLM Provider
@@ -170,6 +176,22 @@ export const RAGQuery: React.FC<RAGQueryProps> = ({ onQueryComplete }) => {
                   <option value="chromadb">ChromaDB</option>
                   <option value="faiss">FAISS</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Collection Name
+                </label>
+                <input
+                  type="text"
+                  value={collectionName}
+                  onChange={(e) => setCollectionName(e.target.value)}
+                  placeholder="default"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                           text-gray-100 placeholder-gray-500
+                           focus:outline-none focus:border-primary-500"
+                  disabled={loading}
+                />
               </div>
             </div>
 
