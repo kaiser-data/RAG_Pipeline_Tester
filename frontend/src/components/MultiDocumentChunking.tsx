@@ -25,11 +25,41 @@ export const MultiDocumentChunking: React.FC<MultiDocumentChunkingProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const strategies = [
-    { id: 'fixed', name: 'Fixed-Size', desc: 'Regular intervals' },
-    { id: 'recursive', name: 'Recursive', desc: 'Respect structure' },
-    { id: 'sentence', name: 'Sentence', desc: 'Sentence boundaries' },
-    { id: 'semantic', name: 'Semantic', desc: 'Topic similarity' },
-    { id: 'sliding_window', name: 'Sliding Window', desc: 'Overlapping windows' },
+    {
+      id: 'fixed',
+      name: 'Fixed-Size',
+      desc: 'Regular intervals',
+      pros: 'Simple, fast, predictable size',
+      cons: 'May break mid-sentence or thought'
+    },
+    {
+      id: 'recursive',
+      name: 'Recursive',
+      desc: 'Respects document structure',
+      pros: 'Preserves paragraphs & structure',
+      cons: 'Variable chunk sizes'
+    },
+    {
+      id: 'sentence',
+      name: 'Sentence',
+      desc: 'Complete sentences only',
+      pros: 'Never breaks sentences',
+      cons: 'Chunk sizes can vary significantly'
+    },
+    {
+      id: 'semantic',
+      name: 'Semantic',
+      desc: 'Groups related content',
+      pros: 'Keeps related topics together',
+      cons: 'Slower, needs good keyword overlap'
+    },
+    {
+      id: 'sliding_window',
+      name: 'Sliding Window',
+      desc: 'Overlapping fixed windows',
+      pros: 'Consistent overlap, no info loss',
+      cons: 'More chunks, higher storage'
+    },
   ] as const;
 
   const handleChunkAll = async () => {
@@ -104,14 +134,14 @@ export const MultiDocumentChunking: React.FC<MultiDocumentChunkingProps> = ({
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Chunking Strategy
             </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {strategies.map((strat) => (
                 <button
                   key={strat.id}
                   onClick={() => setStrategy(strat.id as any)}
                   disabled={isChunking}
                   className={`
-                    p-2.5 rounded-lg border-2 transition-all text-left
+                    p-3 rounded-lg border-2 transition-all text-left
                     ${
                       strategy === strat.id
                         ? 'border-primary-500 bg-primary-900/20 text-primary-300'
@@ -120,8 +150,18 @@ export const MultiDocumentChunking: React.FC<MultiDocumentChunkingProps> = ({
                     ${isChunking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                   `}
                 >
-                  <div className="font-medium text-sm mb-0.5">{strat.name}</div>
-                  <div className="text-xs text-gray-400">{strat.desc}</div>
+                  <div className="font-semibold text-sm mb-1">{strat.name}</div>
+                  <div className="text-xs text-gray-400 mb-2">{strat.desc}</div>
+                  <div className="space-y-1">
+                    <div className="flex items-start gap-1">
+                      <span className="text-green-400 text-xs mt-0.5">✓</span>
+                      <span className="text-xs text-gray-400">{strat.pros}</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="text-red-400 text-xs mt-0.5">✗</span>
+                      <span className="text-xs text-gray-400">{strat.cons}</span>
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>

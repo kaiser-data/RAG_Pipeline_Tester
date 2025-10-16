@@ -163,7 +163,7 @@ export const RAGCompare: React.FC = () => {
             </div>
 
             {/* Backend and Parameters */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Backend</label>
                 <select
@@ -176,6 +176,19 @@ export const RAGCompare: React.FC = () => {
                   <option value="chromadb">ChromaDB</option>
                   <option value="faiss">FAISS</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Collection</label>
+                <input
+                  type="text"
+                  value={collectionName}
+                  onChange={(e) => setCollectionName(e.target.value)}
+                  placeholder="default"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                           text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
+                  disabled={loading}
+                />
               </div>
 
               <div>

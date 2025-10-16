@@ -17,7 +17,6 @@ import { VectorStoreSelector } from './components/VectorStoreSelector';
 import { SearchInterface } from './components/SearchInterface';
 import { SearchResults } from './components/SearchResults';
 import { RAGQuery } from './components/RAGQuery';
-import { RAGCompare } from './components/RAGCompare';
 import { WorkflowStepper } from './components/WorkflowStepper';
 import { StatusCard } from './components/StatusCard';
 import { DatabaseManager } from './components/DatabaseManager';

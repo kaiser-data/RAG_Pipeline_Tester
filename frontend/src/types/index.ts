@@ -66,7 +66,7 @@ export interface ChunkStatistics {
 
 export interface ChunkRequest {
   document_id: string;
-  strategy: 'fixed' | 'recursive';
+  strategy: 'fixed' | 'recursive' | 'sentence' | 'semantic' | 'sliding_window';
   chunk_size: number;
   overlap: number;
   separators?: string[];

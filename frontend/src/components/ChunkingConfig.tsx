@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Scissors, Loader2, Settings } from 'lucide-react';
+import { Scissors, Loader2 } from 'lucide-react';
 import { chunkDocument } from '../utils/api';
 import type { ChunkResponse } from '../types';
 
