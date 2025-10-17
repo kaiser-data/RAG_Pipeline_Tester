@@ -96,9 +96,19 @@ class ChromaDBStore(VectorStore):
         collection_name: str = "default"
     ) -> Dict[str, Any]:
         """Add vectors to ChromaDB collection"""
+        # Extract embedding model info from first metadata entry
+        model_type = metadata[0].get("model_type", "unknown")
+        model_name = metadata[0].get("model_name", "unknown")
+        dimension = len(vectors[0]) if vectors else 0
+
         collection = self.client.get_or_create_collection(
             name=collection_name,
-            metadata={"description": "RAG embeddings"}
+            metadata={
+                "description": "RAG embeddings",
+                "model_type": model_type,
+                "model_name": model_name,
+                "dimension": dimension
+            }
         )
 
         # Extract IDs and documents from metadata
@@ -189,11 +199,15 @@ class ChromaDBStore(VectorStore):
         try:
             collection = self.client.get_collection(name=collection_name)
             count = collection.count()
+            metadata = collection.metadata or {}
             return {
                 "collection": collection_name,
                 "vector_count": count,
                 "backend": "chromadb",
-                "persistent": True
+                "persistent": True,
+                "model_type": metadata.get("model_type", "unknown"),
+                "model_name": metadata.get("model_name", "unknown"),
+                "dimension": metadata.get("dimension", 0)
             }
         except Exception:
             return {
@@ -216,6 +230,7 @@ class FAISSStore(VectorStore):
         self.indexes: Dict[str, faiss.Index] = {}
         self.metadata_store: Dict[str, List[Dict[str, Any]]] = {}
         self.dimension: Dict[str, int] = {}
+        self.collection_metadata: Dict[str, Dict[str, Any]] = {}  # Store model info
 
         # Load existing indexes
         self._load_all_indexes()
@@ -252,7 +267,14 @@ class FAISSStore(VectorStore):
 
         if os.path.exists(metadata_path):
             with open(metadata_path, 'r') as f:
-                self.metadata_store[collection_name] = json.load(f)
+                data = json.load(f)
+                # Support old format (list) and new format (dict with metadata)
+                if isinstance(data, list):
+                    self.metadata_store[collection_name] = data
+                    self.collection_metadata[collection_name] = {}
+                else:
+                    self.metadata_store[collection_name] = data.get("vectors", [])
+                    self.collection_metadata[collection_name] = data.get("collection_metadata", {})
 
     def _save_index(self, collection_name: str):
         """Save index and metadata to disk"""
@@ -263,8 +285,13 @@ class FAISSStore(VectorStore):
             faiss.write_index(self.indexes[collection_name], index_path)
 
         if collection_name in self.metadata_store:
+            # Save with collection metadata
+            data = {
+                "collection_metadata": self.collection_metadata.get(collection_name, {}),
+                "vectors": self.metadata_store[collection_name]
+            }
             with open(metadata_path, 'w') as f:
-                json.dump(self.metadata_store[collection_name], f)
+                json.dump(data, f)
 
     def add_vectors(
         self,
@@ -276,12 +303,21 @@ class FAISSStore(VectorStore):
         vectors_array = np.array(vectors, dtype=np.float32)
         dimension = vectors_array.shape[1]
 
+        # Extract embedding model info
+        model_type = metadata[0].get("model_type", "unknown")
+        model_name = metadata[0].get("model_name", "unknown")
+
         # Create index if it doesn't exist
         if collection_name not in self.indexes:
             # Use IndexFlatIP for inner product (cosine similarity with normalized vectors)
             self.indexes[collection_name] = faiss.IndexFlatIP(dimension)
             self.metadata_store[collection_name] = []
             self.dimension[collection_name] = dimension
+            self.collection_metadata[collection_name] = {
+                "model_type": model_type,
+                "model_name": model_name,
+                "dimension": dimension
+            }
 
         # Normalize vectors for cosine similarity
         faiss.normalize_L2(vectors_array)
@@ -361,12 +397,15 @@ class FAISSStore(VectorStore):
     def get_stats(self, collection_name: str) -> Dict[str, Any]:
         """Get FAISS collection statistics"""
         if collection_name in self.indexes:
+            coll_meta = self.collection_metadata.get(collection_name, {})
             return {
                 "collection": collection_name,
                 "vector_count": self.indexes[collection_name].ntotal,
                 "dimension": self.dimension[collection_name],
                 "backend": "faiss",
-                "persistent": True
+                "persistent": True,
+                "model_type": coll_meta.get("model_type", "unknown"),
+                "model_name": coll_meta.get("model_name", "unknown")
             }
         return {
             "collection": collection_name,
@@ -428,25 +467,63 @@ class VectorStoreManager:
                 f"Available: {list(self.vector_stores.keys())}"
             )
 
-        # Generate query embedding
-        embedder = self._get_embedder()
-        embedder._load_sentence_transformer(model_name)
+        # Get collection stats to determine correct model
+        vector_store = self.vector_stores[backend]
+        stats = vector_store.get_stats(collection_name)
 
-        # Create dummy chunk for embedding generation
-        query_chunk = [{"text": query_text, "chunk_id": "query", "document_id": "query"}]
-        query_embeddings = embedder.generate_sentence_transformer_embeddings(
-            query_chunk,
-            model_name=model_name,
-            batch_size=1
-        )
+        if "error" in stats:
+            raise ValueError(f"Collection '{collection_name}' not found in {backend}")
+
+        collection_model_type = stats.get("model_type", "unknown")
+        collection_model_name = stats.get("model_name", "unknown")
+        collection_dimension = stats.get("dimension", 0)
+
+        # Validate model compatibility
+        embedder = self._get_embedder()
+
+        if collection_model_type == "tfidf":
+            raise ValueError(
+                f"Cannot search collection created with TF-IDF embeddings (dimension: {collection_dimension}). "
+                f"TF-IDF collections don't support semantic search with sentence transformers. "
+                f"Please create a new collection using sentence transformer embeddings."
+            )
+        elif collection_model_type == "sentence_transformer":
+            # Use the same model that was used to create the collection
+            model_to_use = collection_model_name
+            embedder._load_sentence_transformer(model_to_use)
+
+            # Generate query embedding
+            query_chunk = [{"text": query_text, "chunk_id": "query", "document_id": "query"}]
+            query_embeddings = embedder.generate_sentence_transformer_embeddings(
+                query_chunk,
+                model_name=model_to_use,
+                batch_size=1
+            )
+        else:
+            # Unknown model type - try with provided model
+            embedder._load_sentence_transformer(model_name)
+            query_chunk = [{"text": query_text, "chunk_id": "query", "document_id": "query"}]
+            query_embeddings = embedder.generate_sentence_transformer_embeddings(
+                query_chunk,
+                model_name=model_name,
+                batch_size=1
+            )
 
         if not query_embeddings:
             return []
 
         query_vector = query_embeddings[0]["embedding_vector"]
+        query_dimension = len(query_vector)
+
+        # Final dimension check
+        if query_dimension != collection_dimension:
+            raise ValueError(
+                f"Embedding dimension mismatch: query has {query_dimension} dimensions "
+                f"but collection expects {collection_dimension} dimensions. "
+                f"Collection was created with: {collection_model_name}"
+            )
 
         # Search vector store
-        vector_store = self.vector_stores[backend]
         results = vector_store.search(
             query_vector=query_vector,
             top_k=top_k,
