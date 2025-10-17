@@ -158,8 +158,23 @@ class ChromaDBStore(VectorStore):
 
     def list_collections(self) -> List[str]:
         """List all ChromaDB collections"""
-        collections = self.client.list_collections()
-        return [c.name for c in collections]
+        try:
+            collections = self.client.list_collections()
+            # Handle different ChromaDB versions - collections might be dicts or objects
+            result = []
+            for c in collections:
+                if isinstance(c, dict):
+                    result.append(c.get('name', str(c)))
+                elif hasattr(c, 'name'):
+                    result.append(c.name)
+                else:
+                    # Fallback: convert to string
+                    result.append(str(c))
+            return result
+        except Exception as e:
+            # Log error and return empty list
+            print(f"Error listing ChromaDB collections: {e}")
+            return []
 
     def delete_collection(self, collection_name: str) -> bool:
         """Delete ChromaDB collection"""
