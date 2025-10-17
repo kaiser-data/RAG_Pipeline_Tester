@@ -6,8 +6,13 @@ import axios from 'axios';
 import type { APIResponse, Document, UploadResponse, ChunkRequest, ChunkResponse, Chunk, EmbeddingRequest, EmbeddingResponse, EmbeddingsData, EmbeddingStatistics } from '../types';
 
 // Create axios instance with base configuration
+// In Docker, nginx will proxy /api/ to backend
+// In development, connect directly to localhost:8000
+const isDevelopment = window.location.port === '5173'; // Vite dev server port
+const API_URL = isDevelopment ? 'http://localhost:8000' : '';
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
