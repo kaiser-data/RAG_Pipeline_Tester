@@ -16,14 +16,30 @@ class Embedder:
         self.tfidf_vectorizer = None
         self.sentence_transformer = None
         self._sentence_transformer_loaded = False
+        self.current_model_name = None
 
     def _load_sentence_transformer(self, model_name: str = "all-MiniLM-L6-v2"):
-        """Lazy load sentence transformer model"""
-        if not self._sentence_transformer_loaded:
+        """Lazy load sentence transformer model with CPU optimizations"""
+        # Only reload if different model or not yet loaded
+        if not self._sentence_transformer_loaded or self.current_model_name != model_name:
             try:
                 from sentence_transformers import SentenceTransformer
-                self.sentence_transformer = SentenceTransformer(model_name)
+                import torch
+
+                # Detect device (CPU or GPU)
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+
+                # Set CPU optimization flags for faster inference
+                if device == "cpu":
+                    torch.set_num_threads(4)  # Use 4 CPU threads
+                    torch.set_num_interop_threads(4)
+
+                # Load model with device specification
+                self.sentence_transformer = SentenceTransformer(model_name, device=device)
                 self._sentence_transformer_loaded = True
+                self.current_model_name = model_name
+
+                print(f"Loaded sentence transformer '{model_name}' on {device}")
             except ImportError:
                 raise ImportError(
                     "sentence-transformers not installed. "
@@ -112,12 +128,17 @@ class Embedder:
         # Extract text from chunks
         texts = [chunk["text"] for chunk in chunks]
 
-        # Generate embeddings
+        # Generate embeddings with optimizations
+        # Disable progress bar for faster processing (overhead in API context)
+        # Use larger batch size for CPU efficiency
+        effective_batch_size = max(batch_size, 64)  # At least 64 for CPU efficiency
+
         embedding_vectors = self.sentence_transformer.encode(
             texts,
-            batch_size=batch_size,
-            show_progress_bar=True,
-            convert_to_numpy=True
+            batch_size=effective_batch_size,
+            show_progress_bar=False,  # Disabled for speed
+            convert_to_numpy=True,
+            normalize_embeddings=False  # Skip normalization for speed (can normalize later if needed)
         )
 
         # Convert to list of embeddings
